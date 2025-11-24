@@ -1,0 +1,456 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Autopip API (current routes)",
+    "version": "0.1.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CheckoutSessionOut": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" }
+        },
+        "required": ["url"]
+      },
+      "PaidEmailsOut": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": { "type": "string", "format": "email" }
+          }
+        },
+        "required": ["emails"]
+      },
+      "AccountConnectIn": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string" },
+          "token": { "type": "string" },
+          "label": { "type": "string" }
+        },
+        "required": ["account_id"],
+        "additionalProperties": false
+      },
+      "AccountConnectOut": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "account_id": { "type": "string" }
+        },
+        "required": ["ok", "account_id"]
+      },
+      "AccountStatusOut": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string" },
+          "connected": { "type": "boolean" },
+          "last_checked": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "required": ["account_id", "connected", "last_checked"]
+      },
+      "DashboardSummaryOut": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "integer" },
+          "wtd_pnl": { "type": "number" },
+          "wins": { "type": "integer" },
+          "losses": { "type": "integer" },
+          "win_rate": { "type": "number" },
+          "balance": { "type": ["number", "null"] },
+          "equity": { "type": ["number", "null"] }
+        },
+        "required": ["account_id", "wtd_pnl", "wins", "losses", "win_rate", "balance", "equity"]
+      },
+      "TradeOut": {
+        "type": "object",
+        "properties": {
+          "instrument": { "type": ["string", "null"] },
+          "side": { "type": ["string", "null"] },
+          "units": { "type": ["integer", "null"] },
+          "opened_at": { "type": ["string", "null"], "format": "date-time" },
+          "closed_at": { "type": ["string", "null"], "format": "date-time" },
+          "entry_price": { "type": ["number", "null"] },
+          "exit_price": { "type": ["number", "null"] },
+          "pnl_net": { "type": ["number", "null"] }
+        }
+      },
+      "EquityPoint": {
+        "type": "object",
+        "properties": {
+          "taken_at": { "type": "string", "format": "date-time" },
+          "equity": { "type": ["number", "null"] }
+        },
+        "required": ["taken_at", "equity"]
+      },
+      "StripeWebhookAck": {
+        "type": "object",
+        "properties": {
+          "received": { "type": "boolean" },
+          "ok": { "type": "boolean" }
+        }
+      },
+      "ProofSnapshot": {
+        "type": "object",
+        "properties": {
+          "date": { "type": ["string", "null"], "format": "date" },
+          "hash": { "type": ["string", "null"] },
+          "signature": { "type": ["string", "null"] },
+          "public_key": { "type": ["string", "null"] },
+          "ipfs_cid": { "type": ["string", "null"] }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "summary": "Database health check",
+        "tags": ["system"],
+        "responses": {
+          "200": {
+            "description": "Service healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" }
+                  },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database unavailable"
+          }
+        }
+      }
+    },
+    "/stripe/create-checkout-session": {
+      "post": {
+        "operationId": "createCheckoutSession",
+        "summary": "Start a Stripe subscription checkout session",
+        "tags": ["stripe"],
+        "responses": {
+          "200": {
+            "description": "Checkout session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckoutSessionOut" }
+              }
+            }
+          },
+          "400": {
+            "description": "Stripe error"
+          }
+        }
+      }
+    },
+    "/webhooks/stripe": {
+      "post": {
+        "operationId": "handleStripeWebhook",
+        "summary": "Stripe webhook handler",
+        "tags": ["stripe"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Stripe event payload",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event processed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StripeWebhookAck" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid signature or payload"
+          }
+        }
+      }
+    },
+    "/access/paid-emails": {
+      "get": {
+        "operationId": "listPaidEmails",
+        "summary": "List emails with active subscriptions",
+        "tags": ["access"],
+        "responses": {
+          "200": {
+            "description": "Emails returned",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaidEmailsOut" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "post": {
+        "operationId": "connectAccount",
+        "summary": "Register a user trading account",
+        "tags": ["accounts"],
+        "security": [ { "bearerAuth": [] } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AccountConnectIn" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account stored",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountConnectOut" }
+              }
+            }
+          },
+          "400": {
+            "description": "OANDA validation failed"
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          }
+        }
+      }
+    },
+    "/accounts/status": {
+      "get": {
+        "operationId": "accountStatus",
+        "summary": "Lookup account connection status",
+        "tags": ["accounts"],
+        "security": [ { "bearerAuth": [] } ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountStatusOut" }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "404": {
+            "description": "Account not found"
+          }
+        }
+      }
+    },
+    "/dashboard/summary": {
+      "get": {
+        "operationId": "dashboardSummary",
+        "summary": "Account weekly trading summary",
+        "tags": ["dashboard"],
+        "security": [ { "bearerAuth": [] } ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary returned",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DashboardSummaryOut" }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "402": {
+            "description": "Subscription inactive"
+          },
+          "404": {
+            "description": "Account not found"
+          }
+        }
+      }
+    },
+    "/dashboard/open-trades": {
+      "get": {
+        "operationId": "dashboardOpenTrades",
+        "summary": "List open trades for an account",
+        "tags": ["dashboard"],
+        "security": [ { "bearerAuth": [] } ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trades returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TradeOut" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "402": {
+            "description": "Subscription inactive"
+          },
+          "404": {
+            "description": "Account not found"
+          }
+        }
+      }
+    },
+    "/dashboard/trades": {
+      "get": {
+        "operationId": "dashboardTrades",
+        "summary": "List closed trades for an account",
+        "tags": ["dashboard"],
+        "security": [ { "bearerAuth": [] } ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from_dt",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to_dt",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trades returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TradeOut" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "402": {
+            "description": "Subscription inactive"
+          },
+          "404": {
+            "description": "Account not found"
+          }
+        }
+      }
+    },
+    "/dashboard/equity-series": {
+      "get": {
+        "operationId": "dashboardEquitySeries",
+        "summary": "Equity time series for an account",
+        "tags": ["dashboard"],
+        "security": [ { "bearerAuth": [] } ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "30d" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Equity points returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/EquityPoint" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "402": {
+            "description": "Subscription inactive"
+          },
+          "404": {
+            "description": "Account not found"
+          }
+        }
+      }
+    },
+    "/proofs/daily/latest": {
+      "get": {
+        "operationId": "latestProof",
+        "summary": "Latest daily proof artifact",
+        "tags": ["proofs"],
+        "responses": {
+          "200": {
+            "description": "Proof metadata returned",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProofSnapshot" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
