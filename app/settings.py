@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     MAILCHIMP_API_KEY: Optional[str] = None
     MAILCHIMP_LIST_ID: Optional[str] = None
 
+    # Email (SMTP)
+    EMAIL_FROM: Optional[str] = None
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+
     # OANDA (optional, defaults to practice)
     OANDA_ENV: str = "live"  # "practice" or "live"
 

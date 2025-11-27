@@ -13,6 +13,16 @@ FastAPI backend for subscriptions (Stripe), OANDA connect (one-time token paste)
 - In dev, you can run: `make stripe` then run a checkout and watch webhooks flow to `/webhooks/stripe`.
 - The bot should write trades/snapshots to this DB so `/dashboard/*` endpoints have data.
 
+## Email Delivery
+- Configure the following env vars to enable password reset emails:
+  - `EMAIL_FROM`
+  - `SMTP_HOST`
+  - `SMTP_PORT`
+  - `SMTP_USERNAME`
+  - `SMTP_PASSWORD`
+  - Optional toggles: `SMTP_USE_TLS` (default `True`), `SMTP_USE_SSL` (default `False`)
+- Without these, emails are logged to stdout for local development.
+
 ## Endpoints (high level)
 - `POST /stripe/create-checkout-session`
 - `POST /webhooks/stripe`
