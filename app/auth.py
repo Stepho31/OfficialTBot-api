@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
+import secrets
 
 from app.db import get_db
 from app.models import User, BrokerCredential
@@ -11,6 +12,7 @@ from app.schemas import EntitlementsOut
 from app.security import hash_password, verify_password, create_jwt
 from app.crypto import encrypt_api_key
 from app.settings import settings
+from app.emails import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -228,4 +230,110 @@ def login(payload: AuthLoginRequest, db: Session = Depends(get_db)):
         can_access_dashboard=can_access_dashboard,
         entitlements=ents_out,
     )
-2
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+
+class ResetPasswordResponse(BaseModel):
+    message: str
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request a password reset. Generates a reset token and sends an email.
+    Always returns success (to prevent email enumeration attacks).
+    
+    **Endpoint:** POST /auth/forgot-password
+    
+    **Request Body:**
+    - email: Email address of the user requesting password reset
+    
+    **Response:**
+    - message: Success message (always returned, even if email doesn't exist)
+    """
+    email = payload.email.lower().strip()
+    user = db.query(User).filter(User.email == email).first()
+    
+    # Always return success to prevent email enumeration
+    # Only proceed if user exists and has a password (account is activated)
+    if user and user.password_hash:
+        # Generate a secure random token
+        reset_token = secrets.token_urlsafe(32)
+        
+        # Set token and expiration (1 hour from now)
+        user.password_reset_token = reset_token
+        user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        
+        db.commit()
+        
+        # Generate reset link
+        frontend_url = settings.FRONTEND_ORIGIN or settings.PUBLIC_CLIENT_URL
+        reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+        
+        # Send reset email
+        send_password_reset_email(email, reset_link)
+    
+    # Always return success message (security best practice)
+    return ForgotPasswordResponse(
+        message="If an account with that email exists, a password reset link has been sent."
+    )
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset password using a valid reset token.
+    
+    **Endpoint:** POST /auth/reset-password
+    
+    **Request Body:**
+    - token: Password reset token received via email
+    - new_password: New password (must be at least 8 characters)
+    
+    **Response:**
+    - message: Success message
+    
+    **Errors:**
+    - 400: Invalid or expired reset token, or password too short
+    """
+    # Find user by reset token
+    user = db.query(User).filter(
+        User.password_reset_token == payload.token,
+        User.password_reset_expires > datetime.now(timezone.utc)
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+    
+    # Validate password length
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long",
+        )
+    
+    # Update password and clear reset token
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    
+    db.commit()
+    
+    return ResetPasswordResponse(
+        message="Password has been reset successfully. You can now log in with your new password."
+    )

@@ -34,6 +34,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(32), default="USER")
     has_tier1: Mapped[bool] = mapped_column(Boolean, default=False)
     password_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    password_reset_token: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    password_reset_expires: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
     subscriptions: Mapped[List["Subscription"]] = relationship(back_populates="user")
