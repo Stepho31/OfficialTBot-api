@@ -408,7 +408,10 @@ def register(payload: AuthRegisterRequest, db: Session = Depends(get_db)):
     email = payload.email.lower().strip()
     
     # Check if this is an admin email (bypasses eligibility/subscription gating)
+    # Include both ADMIN_EMAILS and SIGNAL_SUPERADMIN_EMAIL
     is_admin_email = email in settings.admin_emails_list
+    if not is_admin_email and settings.SIGNAL_SUPERADMIN_EMAIL:
+        is_admin_email = email == settings.SIGNAL_SUPERADMIN_EMAIL.lower().strip()
 
     # ---- 1. User MUST already exist (pre-provisioned from Mailchimp / Stripe sync) ----
     # EXCEPTION: Admin emails can register without pre-provisioning

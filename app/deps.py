@@ -16,7 +16,7 @@ def _admin_email_set() -> set[str]:
 def _normalize_role(user: User, db: Session) -> User:
     """
     Normalize user role based on admin email list and existing role.
-    - If user email is in admin_emails_list, set role to ADMIN
+    - If user email is in admin_emails_list or SIGNAL_SUPERADMIN_EMAIL, set role to ADMIN
     - If user has no role and is not admin, default to USER
     - If role is invalid, default to USER
     - If user was ADMIN but no longer in admin list, downgrade to USER
@@ -24,6 +24,9 @@ def _normalize_role(user: User, db: Session) -> User:
     current_role = user.role
     normalized_email = user.email.lower().strip() if user.email else None
     is_admin = normalized_email and normalized_email in settings.admin_emails_list
+    # Also check for super admin email
+    if not is_admin and settings.SIGNAL_SUPERADMIN_EMAIL:
+        is_admin = normalized_email == settings.SIGNAL_SUPERADMIN_EMAIL.lower().strip()
     
     # Determine target role
     if is_admin:
