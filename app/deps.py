@@ -4,6 +4,7 @@ from app.db import get_db
 from app.security import verify_jwt
 from app.models import User, Subscription
 from app.settings import settings
+import logging
 
 def db_session():
     return Depends(get_db)
@@ -97,9 +98,34 @@ def subscription_required(user: User = Depends(auth_required), db: Session = Dep
     return user
 
 
-def require_bot_key(x_bot_key: str = Header(default="", convert_underscores=False)) -> None:
+logger = logging.getLogger(__name__)
+ 
+def require_bot_key(
+    bot_key: str = Header(..., alias="x-bot-key")
+) -> None:
+    """
+    Guard for internal bot-only routes.
+    Expects header: x-bot-key: <BOT_API_KEY>
+    """
     expected = settings.BOT_API_KEY
+
     if not expected:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="BOT_API_KEY not configured")
-    if x_bot_key != expected:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bot key")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="BOT_API_KEY not configured",
+        )
+
+    if bot_key != expected:
+        # Temporary debug – remove once fixed
+        logger.warning(
+            "Bot key mismatch: provided_len=%s expected_len=%s "
+            "provided_prefix=%r expected_prefix=%r",
+            len(bot_key or ""),
+            len(expected or ""),
+            (bot_key or "")[:4],
+            (expected or "")[:4],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid bot key",
+        )
