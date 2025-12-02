@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session, or_, and_
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 
 from app.crypto import decrypt_api_key
 from app.db import get_db
