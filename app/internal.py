@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, or_, and_
 
 from app.crypto import decrypt_api_key
 from app.db import get_db
@@ -171,11 +171,22 @@ def get_tier2_users_for_automation(db: Session = Depends(get_db)) -> Tier2UsersO
     # Find all users with active Tier-2 subscriptions
     active_tier2_users = (
         db.query(User)
-        .join(Subscription, User.id == Subscription.user_id)
+        .outerjoin(Subscription, User.id == Subscription.user_id)
         .filter(
-            Subscription.plan == "TIER2",
-            Subscription.status.in_(list(ACTIVE_SUB_STATUSES)),
-            (Subscription.current_period_end.is_(None) | (Subscription.current_period_end >= now))
+            or_(
+                # Normal Tier-2 path
+                and_(
+                    Subscription.plan == "TIER2",
+                    Subscription.status.in_(list(ACTIVE_SUB_STATUSES)),
+                    or_(
+                        Subscription.current_period_end.is_(None),
+                        Subscription.current_period_end >= now,
+                    ),
+                ),
+                # Admin override – admins are always considered candidates
+                (User.role == "ADMIN"),
+                
+            )
         )
         .distinct()
         .all()
