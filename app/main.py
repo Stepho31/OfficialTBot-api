@@ -20,16 +20,12 @@ from app.logging_conf import setup_logging
 setup_logging()
 app = FastAPI(title="Autopip API")
 
-origins = [
-    "https://official-t-bot-ui.vercel.app",
-    "https://official-t-bot-ui-git-main-stepho31s-projects.vercel.app",
-    "https://official-t-bot-bsd251lc9-stepho31s-projects.vercel.app",
-    "http://localhost:3000",  # dev
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:3000",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
