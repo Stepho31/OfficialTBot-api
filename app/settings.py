@@ -7,6 +7,9 @@ from typing import Optional
 class Settings(BaseSettings):
     # Core
     DATABASE_URL: str
+    # JWT_SECRET must be stable across deployments to maintain user sessions
+    # Set this to a fixed value in your environment variables (e.g., Vercel env vars)
+    # DO NOT auto-generate or regenerate this value, as it will invalidate all existing tokens
     JWT_SECRET: str
     BOT_API_KEY: str
     BROKER_SECRET_KEY: str
@@ -71,6 +74,15 @@ class Settings(BaseSettings):
         return [email.strip().lower() for email in self.ADMIN_EMAILS.split(",") if email.strip()]
 
 settings = Settings()
+
+# Validate JWT_SECRET stability
+if not settings.JWT_SECRET or len(settings.JWT_SECRET) < 32:
+    import warnings
+    warnings.warn(
+        "JWT_SECRET is too short or empty. Use a secure, stable secret (at least 32 characters) "
+        "that does not change between deployments. Changing JWT_SECRET will invalidate all existing user tokens.",
+        UserWarning
+    )
 
 if not settings.FRONTEND_ORIGIN:
     # fall back to PUBLIC_CLIENT_URL for older code paths
