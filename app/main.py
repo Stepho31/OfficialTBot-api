@@ -20,9 +20,12 @@ from app.logging_conf import setup_logging
 setup_logging()
 app = FastAPI(title="Autopip API")
 
-origins = [settings.FRONTEND_ORIGIN]
-if settings.DEV_ALLOW_ALL_CORS:
-    origins = ["*"]
+origins = [
+    "https://official-t-bot-ui.vercel.app",
+    "https://official-t-bot-ui-git-main-stepho31s-projects.vercel.app",
+    "https://official-t-bot-bsd251lc9-stepho31s-projects.vercel.app",
+    "http://localhost:3000",  # dev
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +34,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Create tables (dev convenience; in prod use Alembic)
 Base.metadata.create_all(bind=engine)
