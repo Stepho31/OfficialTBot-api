@@ -14,6 +14,7 @@ from app.internal import router as internal_router
 from app.api_v1 import router as api_v1_router
 from app.health import router as health_router
 from app.auth import router as auth_router
+from app.user_settings import router as user_settings_router
 from app.logging_conf import setup_logging
 
 setup_logging()
@@ -51,3 +52,4 @@ app.include_router(proofs_router)
 app.include_router(broker_me_router)
 app.include_router(internal_router)
 app.include_router(api_v1_router)
+app.include_router(user_settings_router)

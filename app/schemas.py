@@ -222,3 +222,18 @@ class Tier2UserOut(BaseModel):
 
 class Tier2UsersOut(BaseModel):
     users: List[Tier2UserOut]
+
+
+class UserSettingsOut(BaseModel):
+    trade_allocation: float
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class UserSettingsIn(BaseModel):
+    trade_allocation: float | None = None
+
+
+class UserSettingsInternalOut(BaseModel):
+    tradeAllocation: float

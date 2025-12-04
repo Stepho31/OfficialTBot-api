@@ -11,7 +11,7 @@ from app.crypto import decrypt_api_key
 from app.db import get_db
 from app.deps import require_bot_key
 from app.entitlements import compute_entitlements, ACTIVE_SUB_STATUSES
-from app.models import Account, BrokerCredential, EquitySnapshot, Subscription, Trade, User
+from app.models import Account, BrokerCredential, EquitySnapshot, Subscription, Trade, User, UserSettings
 from app.schemas import (
     BrokerSecretOut,
     EntitlementsOut,
@@ -21,6 +21,7 @@ from app.schemas import (
     TradeAck,
     Tier2UserOut,
     Tier2UsersOut,
+    UserSettingsInternalOut,
 )
 
 router = APIRouter(prefix="/v1/internal", tags=["internal"], dependencies=[Depends(require_bot_key)])
@@ -226,4 +227,16 @@ def get_tier2_users_for_automation(db: Session = Depends(get_db)) -> Tier2UsersO
             continue
     
     return Tier2UsersOut(users=eligible_users)
+
+
+@router.get("/user-settings", response_model=UserSettingsInternalOut)
+def get_user_settings_internal(userId: int = Query(...), db: Session = Depends(get_db)) -> UserSettingsInternalOut:
+    """Get user settings for trading bot. Returns default if not set."""
+    user = _get_user(db, userId)
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user.id).one_or_none()
+    
+    # Default to 10.0 if no settings found (matches system default)
+    trade_allocation = settings.trade_allocation if settings else 10.0
+    
+    return UserSettingsInternalOut(tradeAllocation=trade_allocation)
 

@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -11,6 +12,34 @@ from app.settings import settings
 
 router = APIRouter(prefix="/webhooks", tags=["stripe"])
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+def log_render_debug_info():
+    """Debug helper to verify script is running on Render."""
+    print("=" * 60)
+    print("🔍 RENDER DEBUG MODE ENABLED")
+    print("=" * 60)
+    
+    # Current working directory
+    cwd = os.getcwd()
+    print(f"📁 Current working directory: {cwd}")
+    
+    # DRY_RUN and TRADING_MODE
+    dry_run = os.getenv("DRY_RUN", "not set")
+    trading_mode = os.getenv("TRADING_MODE", "not set")
+    print(f"🔧 DRY_RUN: {dry_run}")
+    print(f"🔧 TRADING_MODE: {trading_mode}")
+    
+    # Required env vars (just show ✅/❌, don't print secrets)
+    oanda_api_key = "✅" if os.getenv("OANDA_API_KEY") else "❌"
+    oanda_account_id = "✅" if os.getenv("OANDA_ACCOUNT_ID") else "❌"
+    openai_api_key = "✅" if os.getenv("OPENAI_API_KEY") else "❌"
+    
+    print(f"🔑 OANDA_API_KEY: {oanda_api_key}")
+    print(f"🔑 OANDA_ACCOUNT_ID: {oanda_account_id}")
+    print(f"🔑 OPENAI_API_KEY: {openai_api_key}")
+    
+    print("=" * 60)
 
 
 def _map_price_to_tier(price_id: Optional[str]) -> Optional[str]:
@@ -291,3 +320,13 @@ async def stripe_webhook(request: Request):
     finally:
         db.close()
     return {"received": True}
+
+
+if __name__ == "__main__":
+    print("[STRIPE_WEBHOOKS] Script starting up...")
+    print("[STRIPE_WEBHOOKS] Checking for RENDER_DEBUG environment variable...")
+    
+    if os.getenv("RENDER_DEBUG", "").lower() == "true":
+        log_render_debug_info()
+    
+    print("[STRIPE_WEBHOOKS] This is a FastAPI router module. Import it in your FastAPI app to use.")

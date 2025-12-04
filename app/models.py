@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     UniqueConstraint,
     LargeBinary,
+    Float,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column, DeclarativeBase
 from sqlalchemy.sql import func
@@ -42,6 +43,9 @@ class User(Base):
     accounts: Mapped[List["Account"]] = relationship(back_populates="user")
     broker_credential: Mapped[Optional["BrokerCredential"]] = relationship(
         back_populates="user", uselist=False
+    )
+    settings: Mapped[Optional["UserSettings"]] = relationship(
+        "UserSettings", uselist=False, foreign_keys="[UserSettings.user_id]"
     )
 
 
@@ -168,3 +172,19 @@ class BrokerCredential(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="broker_credential")
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    
+    trade_allocation: Mapped[float] = mapped_column(Float, nullable=False, default=10.0)
+    
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship()
