@@ -22,9 +22,11 @@ app = FastAPI(title="Autopip API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-    ],
+   origins = [
+    "https://official-t-bot-ui.vercel.app",
+    "https://official-t-bot.vercel.app",
+    "https://official-t-bot-1ddkcd33f-stepho31s-projects.vercel.app",
+  ]
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
