@@ -90,6 +90,7 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         .one_or_none()
     )
     created = False
+    was_open = False
     if not trade:
         trade = Trade(
             user_id=user.id,
@@ -98,6 +99,9 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         )
         created = True
         db.add(trade)
+    else:
+        # Track if trade was previously open (for equity snapshot on close)
+        was_open = trade.status == "OPEN" or (trade.status is None and trade.closed_at is None)
 
     trade.user_id = user.id
     trade.account_id = account.id
@@ -105,13 +109,20 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
     trade.side = payload.side
     trade.units = payload.size
     trade.opened_at = payload.openedAt or trade.opened_at or _now()
-    trade.closed_at = payload.closedAt
-    trade.entry_price = payload.entry
-    if payload.status.upper() == "CLOSED":
-        if payload.entry is not None:
+    
+    # Determine status from payload or closed_at
+    payload_status_upper = payload.status.upper() if payload.status else None
+    if payload_status_upper == "CLOSED" or payload.closedAt:
+        trade.closed_at = payload.closedAt or trade.closed_at or _now()
+        trade.status = "CLOSED"
+        if payload.entry is not None and not trade.exit_price:
             trade.exit_price = payload.entry
-        if not payload.closedAt:
-            trade.closed_at = trade.closed_at or _now()
+    else:
+        # Trade is open
+        trade.status = "OPEN"
+        trade.closed_at = None
+    
+    trade.entry_price = payload.entry or trade.entry_price
     notes = []
     if payload.tp is not None:
         notes.append(f"tp={payload.tp}")
@@ -121,10 +132,22 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         notes.append(f"timeframe={payload.timeframe}")
     if notes:
         trade.reason_open = " ".join(notes)
-    trade.pnl_net = payload.pnl
-    trade.reason_close = payload.status
+    
+    # Update P/L - use payload.pnl if provided, otherwise keep existing
+    if payload.pnl is not None:
+        trade.pnl_net = payload.pnl
+    
+    # Set reason_close for closed trades
+    if trade.status == "CLOSED":
+        trade.reason_close = payload.status or trade.reason_close or "CLOSED"
 
     db.commit()
+    
+    # Note: Equity snapshots should be created by the bot when trades open/close
+    # by calling POST /v1/internal/equity with current balance/equity from OANDA.
+    # This ensures the equity trend graph captures trade lifecycle events.
+    # The trade state is now persisted and ready for dashboard display.
+    
     return TradeAck(ok=True, upserted=created)
 
 

@@ -38,3 +38,14 @@ def account_status(account_id: str, db: Session = Depends(get_db), user=Depends(
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
     return AccountStatusOut(account_id=account_id, connected=bool(acct.token_encrypted), last_checked=None)
+
+@router.get("/primary")
+def get_primary_account(user=Depends(auth_required), db: Session = Depends(get_db)):
+    """Get the user's primary account for dashboard use."""
+    acct = db.query(Account).filter(Account.user_id==user.id, Account.is_primary==True).first()
+    if not acct:
+        # Fallback to first account if no primary is set
+        acct = db.query(Account).filter(Account.user_id==user.id).first()
+    if not acct:
+        raise HTTPException(status_code=404, detail="No account found for user")
+    return {"account_id": acct.id, "oanda_account_id": acct.account_id, "label": acct.label}

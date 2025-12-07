@@ -114,6 +114,7 @@ class Trade(Base):
 
     reason_open: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reason_close: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
     user: Mapped["User"] = relationship()
     account: Mapped["Account"] = relationship()

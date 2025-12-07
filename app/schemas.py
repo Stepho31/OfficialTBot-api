@@ -61,6 +61,7 @@ class DashboardSummaryOut(BaseModel):
     equity: float | None = None
 
 class TradeOut(BaseModel):
+    trade_id: Optional[str] = None
     instrument: Optional[str]
     side: Optional[str]
     units: Optional[int]
@@ -69,6 +70,8 @@ class TradeOut(BaseModel):
     entry_price: Optional[float]
     exit_price: Optional[float]
     pnl_net: Optional[float]
+    status: Optional[str] = None
+    unrealized_pnl: Optional[float] = None
 
 class EquityPoint(BaseModel):
     taken_at: datetime

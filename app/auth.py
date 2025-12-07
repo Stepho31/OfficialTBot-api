@@ -384,22 +384,28 @@ def _compute_can_access_dashboard(entitlements, user: User, db: Session) -> bool
     Compute whether user can access dashboard based on entitlements.
     
     Rules:
-    - ADMIN role: always allowed
+    - ADMIN role (including super admins): always allowed
     - Tier-2 active: allowed
     - Tier-1, waitlist, or free users: NOT allowed
     - Local dev mode (no STRIPE_SECRET_KEY): allow all registered users (for development)
     """
     user_role = (user.role or "USER").upper()
+    
+    # Check if user is admin (including super admin via SIGNAL_SUPERADMIN_EMAIL)
     if user_role == "ADMIN":
+        logger.debug(f"User {user.email} has ADMIN role - granting dashboard access")
         return True
 
     # Local dev mode: if Stripe is not configured, allow dashboard access for development
     if not settings.STRIPE_SECRET_KEY:
+        logger.debug(f"Stripe not configured - allowing dashboard access for {user.email}")
         return True
 
     # Use the can_access_dashboard from entitlements (computed in compute_entitlements)
     # This ensures: Tier-2 active = True, Tier-1/waitlist/free = False
-    return entitlements.can_access_dashboard
+    result = entitlements.can_access_dashboard
+    logger.debug(f"Dashboard access for {user.email}: {result} (tier2_active: {entitlements.tier2_active})")
+    return result
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -530,16 +536,20 @@ def register(payload: AuthRegisterRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=AuthResponse)
 def login(payload: AuthLoginRequest, db: Session = Depends(get_db)):
     email = payload.email.lower().strip()
+    logger.info(f"Login attempt for email: {email}")
+    
     user = db.query(User).filter(User.email == email).first()
     if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
+        logger.warning(f"Login failed: Invalid credentials for {email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    # Normalize role (this will set ADMIN if email is in ADMIN_EMAILS)
+    # Normalize role (this will set ADMIN if email is in ADMIN_EMAILS or SIGNAL_SUPERADMIN_EMAIL)
     from app.deps import _normalize_role
     user = _normalize_role(user, db)
+    logger.info(f"User role after normalization: {user.role} for {email}")
 
     # Compute entitlements
     now = datetime.now(timezone.utc)
@@ -547,9 +557,12 @@ def login(payload: AuthLoginRequest, db: Session = Depends(get_db)):
 
     # Compute dashboard access
     can_access_dashboard = _compute_can_access_dashboard(ents, user, db)
+    logger.info(f"Dashboard access for {email}: {can_access_dashboard} (role: {user.role}, tier2_active: {ents.tier2_active})")
 
     # If not entitled in production, return a special error so the UI can redirect to Stripe
+    # Only admins, super admins, and Tier-2 users can login
     if not can_access_dashboard and settings.STRIPE_SECRET_KEY:
+        logger.warning(f"Login blocked: User {email} does not have dashboard access (role: {user.role}, tier2_active: {ents.tier2_active})")
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="PAYMENT_REQUIRED",
