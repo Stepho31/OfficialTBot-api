@@ -25,7 +25,8 @@ app.add_middleware(
     allow_origins=[
     "https://official-t-bot-ui.vercel.app",
     "https://official-t-bot.vercel.app",
-    "https://official-t-bot-1ddkcd33f-stepho31s-projects.vercel.app"
+    "https://official-t-bot-1ddkcd33f-stepho31s-projects.vercel.app",
+    "https://official-t-bot-ui-git-main-stepho31s-projects.vercel.app",
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
