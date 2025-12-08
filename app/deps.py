@@ -4,6 +4,7 @@ from app.db import get_db
 from app.security import verify_jwt
 from app.models import User, Subscription
 from app.settings import settings
+from app.entitlements import compute_entitlements
 import logging
 
 def db_session():
@@ -95,6 +96,20 @@ def subscription_required(user: User = Depends(auth_required), db: Session = Dep
     sub = db.query(Subscription).filter(Subscription.user_id == user.id).order_by(Subscription.created_at.desc()).first()
     if not sub or sub.status not in ("trialing","active"):
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Subscription inactive")
+    return user
+
+
+def dashboard_access_required(user: User = Depends(auth_required), db: Session = Depends(get_db)) -> User:
+    """
+    Require that user has dashboard access (Tier-2, Admin, or Super Admin).
+    Admin and Super Admin are both represented by role='ADMIN' in the User model.
+    """
+    entitlements = compute_entitlements(db, user)
+    if not entitlements.can_access_dashboard:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dashboard access requires Tier-2 subscription or Admin role"
+        )
     return user
 
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.deps import auth_required
+from app.deps import auth_required, dashboard_access_required
 from app.schemas import AccountConnectIn, AccountStatusOut
-from app.models import Account
+from app.models import Account, BrokerCredential
 from app.db import get_db
 from app.crypto import encrypt_token
 from app.settings import settings
@@ -40,15 +40,50 @@ def account_status(account_id: str, db: Session = Depends(get_db), user=Depends(
     return AccountStatusOut(account_id=account_id, connected=bool(acct.token_encrypted), last_checked=None)
 
 @router.get("/primary")
-def get_primary_account(user=Depends(auth_required), db: Session = Depends(get_db)):
-    """Get the user's primary account for dashboard use."""
+def get_primary_account(user=Depends(dashboard_access_required), db: Session = Depends(get_db)):
+    """Get the user's primary account for dashboard use.
+    
+    Requires Tier-2 subscription, Admin, or Super Admin role.
+    If no Account record exists, attempts to auto-create one from BrokerCredential.
+    """
     try:
         acct = db.query(Account).filter(Account.user_id==user.id, Account.is_primary==True).first()
         if not acct:
             # Fallback to first account if no primary is set
             acct = db.query(Account).filter(Account.user_id==user.id).first()
+        
+        # If no Account exists, try to create one from BrokerCredential
         if not acct:
-            raise HTTPException(status_code=404, detail="No account found for user")
+            credential = db.query(BrokerCredential).filter(BrokerCredential.user_id == user.id).first()
+            if credential:
+                # Check if Account with this account_id already exists
+                existing = db.query(Account).filter(
+                    Account.user_id == user.id,
+                    Account.account_id == credential.oanda_account_id
+                ).first()
+                
+                if existing:
+                    acct = existing
+                else:
+                    # Create new Account from BrokerCredential
+                    # Note: We don't migrate the encrypted API key as token since formats differ
+                    # The Account can work without token_encrypted for dashboard purposes
+                    acct = Account(
+                        user_id=user.id,
+                        account_id=credential.oanda_account_id,
+                        token_encrypted=None,
+                        label=None,
+                        is_primary=True
+                    )
+                    db.add(acct)
+                    db.commit()
+                    db.refresh(acct)
+        
+        if not acct:
+            raise HTTPException(
+                status_code=404, 
+                detail="No account found for user. Please connect your broker account first."
+            )
         return {"account_id": acct.id, "oanda_account_id": acct.account_id, "label": acct.label}
     except HTTPException:
         raise

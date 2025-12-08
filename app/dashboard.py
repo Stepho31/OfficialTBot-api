@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime, timedelta
-from app.deps import auth_required
+from app.deps import dashboard_access_required
 from app.db import get_db
 from app.models import Trade, EquitySnapshot, Account
 from app.schemas import DashboardSummaryOut, TradeOut, EquityPoint
@@ -44,7 +44,7 @@ def _calculate_equity_from_trades(db: Session, account_id: int, balance: Optiona
 
 
 @router.get("/summary", response_model=DashboardSummaryOut)
-def summary(account_id: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+def summary(account_id: int, user=Depends(dashboard_access_required), db: Session = Depends(get_db)):
     acct = _ensure_account(db, user.id, account_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -77,7 +77,7 @@ def summary(account_id: int, user=Depends(auth_required), db: Session = Depends(
     )
 
 @router.get("/open-trades")
-def open_trades(account_id: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+def open_trades(account_id: int, user=Depends(dashboard_access_required), db: Session = Depends(get_db)):
     acct = _ensure_account(db, user.id, account_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -103,7 +103,7 @@ def open_trades(account_id: int, user=Depends(auth_required), db: Session = Depe
     ) for r in rows]
 
 @router.get("/trades")
-def trades(account_id: int, from_dt: str | None = None, to_dt: str | None = None, user=Depends(auth_required), db: Session = Depends(get_db)):
+def trades(account_id: int, from_dt: str | None = None, to_dt: str | None = None, user=Depends(dashboard_access_required), db: Session = Depends(get_db)):
     acct = _ensure_account(db, user.id, account_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -134,7 +134,7 @@ def trades(account_id: int, from_dt: str | None = None, to_dt: str | None = None
     ) for r in rows]
 
 @router.get("/equity-series")
-def equity_series(account_id: int, window: str = "30d", user=Depends(auth_required), db: Session = Depends(get_db)):
+def equity_series(account_id: int, window: str = "30d", user=Depends(dashboard_access_required), db: Session = Depends(get_db)):
     acct = _ensure_account(db, user.id, account_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
