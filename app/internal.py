@@ -81,8 +81,39 @@ def get_broker_internal(userId: int = Query(...), db: Session = Depends(get_db))
 def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db)) -> TradeAck:
     user = _get_user(db, payload.userId)
     account = _resolve_account(db, user.id, payload.oandaAccountId)
+    
+    # Auto-create Account record if missing (prevents 404 errors)
+    # This ensures trades can be persisted even if Account wasn't created via /accounts endpoint
     if not account:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not connected for user")
+        if not payload.oandaAccountId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="oandaAccountId is required to create Account record"
+            )
+        # Create Account record automatically from BrokerCredential
+        # Verify BrokerCredential exists for this user
+        broker_cred = db.query(BrokerCredential).filter(
+            BrokerCredential.user_id == user.id,
+            BrokerCredential.oanda_account_id == payload.oandaAccountId
+        ).one_or_none()
+        
+        if not broker_cred:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"BrokerCredential not found for user {user.id} and OANDA account {payload.oandaAccountId}"
+            )
+        
+        # Create Account record
+        account = Account(
+            user_id=user.id,
+            account_id=payload.oandaAccountId,
+            broker="OANDA",
+            is_primary=True,  # Assume primary if it's the only one
+        )
+        db.add(account)
+        db.flush()  # Flush to get account.id
+        db.commit()
+        db.refresh(account)
 
     trade = (
         db.query(Trade)

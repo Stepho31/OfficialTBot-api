@@ -116,7 +116,7 @@ def dashboard_access_required(user: User = Depends(auth_required), db: Session =
 logger = logging.getLogger(__name__)
  
 def require_bot_key(
-    bot_key: str = Header(..., alias="x-bot-key")
+    bot_key: str = Header(default="", alias="x-bot-key")
 ) -> None:
     """
     Guard for internal bot-only routes.
@@ -130,7 +130,7 @@ def require_bot_key(
             detail="BOT_API_KEY not configured",
         )
 
-    if bot_key != expected:
+    if not bot_key or bot_key != expected:
         # Temporary debug – remove once fixed
         logger.warning(
             "Bot key mismatch: provided_len=%s expected_len=%s "

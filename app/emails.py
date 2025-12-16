@@ -105,9 +105,9 @@ def _send_email(subject: str, body: str, recipient: str) -> None:
     """
     host = settings.SMTP_HOST
     port = settings.SMTP_PORT
-    username = getattr(settings, "SMTP_USER", None)
-    password = getattr(settings, "SMTP_PASSWORD", None)
-    from_addr = getattr(settings, "SMTP_FROM", username)
+    username = settings.SMTP_USERNAME
+    password = settings.SMTP_PASSWORD
+    from_addr = settings.EMAIL_FROM
 
     if not host or not port:
         logger.warning("SMTP is not configured (host/port missing); skipping email send.")
