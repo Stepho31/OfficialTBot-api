@@ -80,12 +80,20 @@ def get_broker_internal(userId: int = Query(...), db: Session = Depends(get_db))
 
 @router.post("/trades", response_model=TradeAck)
 def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db)) -> TradeAck:
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[API] Received trade upsert request: userId={payload.userId}, externalTradeId={payload.externalTradeId}, symbol={payload.symbol}, side={payload.side}, size={payload.size}, oandaAccountId={payload.oandaAccountId}")
+    
     user = _get_user(db, payload.userId)
+    logger.info(f"[API] User found: id={user.id}, email={user.email}")
+    
     account = _resolve_account(db, user.id, payload.oandaAccountId)
     
     # Auto-create Account record if missing (prevents 404 errors)
     # This ensures trades can be persisted even if Account wasn't created via /accounts endpoint
     if not account:
+        logger.info(f"[API] Account not found for user {user.id} and OANDA account {payload.oandaAccountId}, attempting to create...")
         if not payload.oandaAccountId:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -99,6 +107,7 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         ).one_or_none()
         
         if not broker_cred:
+            logger.error(f"[API] BrokerCredential not found for user {user.id} and OANDA account {payload.oandaAccountId}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"BrokerCredential not found for user {user.id} and OANDA account {payload.oandaAccountId}"
@@ -115,6 +124,9 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         db.flush()  # Flush to get account.id
         db.commit()
         db.refresh(account)
+        logger.info(f"[API] Created Account record: id={account.id}, account_id={account.account_id}, user_id={account.user_id}")
+    else:
+        logger.info(f"[API] Account found: id={account.id}, account_id={account.account_id}, user_id={account.user_id}")
 
     trade = (
         db.query(Trade)
@@ -131,12 +143,14 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         )
         created = True
         db.add(trade)
+        logger.info(f"[API] Creating new trade: external_id={payload.externalTradeId}, account_id={account.id}, user_id={user.id}")
     else:
         # Track if trade was previously open (for equity snapshot on close)
         was_open = trade.status == "OPEN" or (trade.status is None and trade.closed_at is None)
+        logger.info(f"[API] Updating existing trade: external_id={payload.externalTradeId}, account_id={account.id}, user_id={user.id}, was_open={was_open}")
 
     trade.user_id = user.id
-    trade.account_id = account.id
+    trade.account_id = account.id  # Use database account.id, not OANDA account_id
     trade.instrument = payload.symbol
     trade.side = payload.side
     trade.units = payload.size
@@ -174,6 +188,7 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         trade.reason_close = payload.status or trade.reason_close or "CLOSED"
 
     db.commit()
+    logger.info(f"[API] Trade persisted successfully: external_id={payload.externalTradeId}, account_id={account.id}, status={trade.status}, created={created}")
     
     # Note: Equity snapshots should be created by the bot when trades open/close
     # by calling POST /v1/internal/equity with current balance/equity from OANDA.
