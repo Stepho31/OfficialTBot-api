@@ -22,6 +22,7 @@ from app.schemas import (
     Tier2UserOut,
     Tier2UsersOut,
     UserSettingsInternalOut,
+    TradeOut,
 )
 
 router = APIRouter(prefix="/v1/internal", tags=["internal"], dependencies=[Depends(require_bot_key)])
@@ -293,4 +294,58 @@ def get_user_settings_internal(userId: int = Query(...), db: Session = Depends(g
     trade_allocation = settings.trade_allocation if settings else 10.0
     
     return UserSettingsInternalOut(tradeAllocation=trade_allocation)
+
+
+@router.get("/weekly-trades")
+def get_weekly_trades_internal(
+    from_dt: str = Query(..., description="Start datetime (ISO format)"),
+    to_dt: str = Query(..., description="End datetime (ISO format)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all closed trades for a date range (for weekly reports).
+    Used by the bot to generate weekly recap emails from database instead of file system.
+    Returns trades across all users for the specified date range.
+    """
+    from datetime import datetime
+    
+    try:
+        start_dt = datetime.fromisoformat(from_dt.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(to_dt.replace("Z", "+00:00"))
+    except ValueError as e:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid datetime format: {e}"
+        )
+    
+    # Query all closed trades in the date range
+    # Fix: Query by closed_at date range to get all trades that closed during the week
+    trades = (
+        db.query(Trade)
+        .filter(
+            Trade.closed_at.isnot(None),
+            Trade.closed_at >= start_dt,
+            Trade.closed_at <= end_dt,
+        )
+        .order_by(Trade.closed_at.asc())
+        .all()
+    )
+    
+    # Serialize trades for weekly email format
+    return [
+        TradeOut(
+            trade_id=t.external_id,
+            instrument=t.instrument,
+            side=t.side,
+            units=t.units,
+            opened_at=t.opened_at,
+            closed_at=t.closed_at,
+            entry_price=float(t.entry_price) if t.entry_price is not None else None,
+            exit_price=float(t.exit_price) if t.exit_price is not None else None,
+            pnl_net=float(t.pnl_net) if t.pnl_net is not None else None,
+            status=t.status or ("CLOSED" if t.closed_at is not None else "OPEN"),
+        )
+        for t in trades
+    ]
 
