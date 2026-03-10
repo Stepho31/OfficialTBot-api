@@ -22,7 +22,6 @@ from app.schemas import (
     Tier2UserOut,
     Tier2UsersOut,
     UserSettingsInternalOut,
-    TradeOut,
 )
 
 router = APIRouter(prefix="/v1/internal", tags=["internal"], dependencies=[Depends(require_bot_key)])
@@ -80,20 +79,12 @@ def get_broker_internal(userId: int = Query(...), db: Session = Depends(get_db))
 
 @router.post("/trades", response_model=TradeAck)
 def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db)) -> TradeAck:
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"[API] Received trade upsert request: userId={payload.userId}, externalTradeId={payload.externalTradeId}, symbol={payload.symbol}, side={payload.side}, size={payload.size}, oandaAccountId={payload.oandaAccountId}")
-    
     user = _get_user(db, payload.userId)
-    logger.info(f"[API] User found: id={user.id}, email={user.email}")
-    
     account = _resolve_account(db, user.id, payload.oandaAccountId)
     
     # Auto-create Account record if missing (prevents 404 errors)
     # This ensures trades can be persisted even if Account wasn't created via /accounts endpoint
     if not account:
-        logger.info(f"[API] Account not found for user {user.id} and OANDA account {payload.oandaAccountId}, attempting to create...")
         if not payload.oandaAccountId:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -107,7 +98,6 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         ).one_or_none()
         
         if not broker_cred:
-            logger.error(f"[API] BrokerCredential not found for user {user.id} and OANDA account {payload.oandaAccountId}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"BrokerCredential not found for user {user.id} and OANDA account {payload.oandaAccountId}"
@@ -124,9 +114,6 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         db.flush()  # Flush to get account.id
         db.commit()
         db.refresh(account)
-        logger.info(f"[API] Created Account record: id={account.id}, account_id={account.account_id}, user_id={account.user_id}")
-    else:
-        logger.info(f"[API] Account found: id={account.id}, account_id={account.account_id}, user_id={account.user_id}")
 
     trade = (
         db.query(Trade)
@@ -143,14 +130,12 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         )
         created = True
         db.add(trade)
-        logger.info(f"[API] Creating new trade: external_id={payload.externalTradeId}, account_id={account.id}, user_id={user.id}")
     else:
         # Track if trade was previously open (for equity snapshot on close)
         was_open = trade.status == "OPEN" or (trade.status is None and trade.closed_at is None)
-        logger.info(f"[API] Updating existing trade: external_id={payload.externalTradeId}, account_id={account.id}, user_id={user.id}, was_open={was_open}")
 
     trade.user_id = user.id
-    trade.account_id = account.id  # Use database account.id, not OANDA account_id
+    trade.account_id = account.id
     trade.instrument = payload.symbol
     trade.side = payload.side
     trade.units = payload.size
@@ -188,7 +173,6 @@ def upsert_trade_internal(payload: InternalTradeIn, db: Session = Depends(get_db
         trade.reason_close = payload.status or trade.reason_close or "CLOSED"
 
     db.commit()
-    logger.info(f"[API] Trade persisted successfully: external_id={payload.externalTradeId}, account_id={account.id}, status={trade.status}, created={created}")
     
     # Note: Equity snapshots should be created by the bot when trades open/close
     # by calling POST /v1/internal/equity with current balance/equity from OANDA.
@@ -309,58 +293,4 @@ def get_user_settings_internal(userId: int = Query(...), db: Session = Depends(g
     trade_allocation = settings.trade_allocation if settings else 10.0
     
     return UserSettingsInternalOut(tradeAllocation=trade_allocation)
-
-
-@router.get("/weekly-trades")
-def get_weekly_trades_internal(
-    from_dt: str = Query(..., description="Start datetime (ISO format)"),
-    to_dt: str = Query(..., description="End datetime (ISO format)"),
-    db: Session = Depends(get_db),
-):
-    """
-    Get all closed trades for a date range (for weekly reports).
-    Used by the bot to generate weekly recap emails from database instead of file system.
-    Returns trades across all users for the specified date range.
-    """
-    from datetime import datetime
-    
-    try:
-        start_dt = datetime.fromisoformat(from_dt.replace("Z", "+00:00"))
-        end_dt = datetime.fromisoformat(to_dt.replace("Z", "+00:00"))
-    except ValueError as e:
-        from fastapi import HTTPException, status
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid datetime format: {e}"
-        )
-    
-    # Query all closed trades in the date range
-    # Fix: Query by closed_at date range to get all trades that closed during the week
-    trades = (
-        db.query(Trade)
-        .filter(
-            Trade.closed_at.isnot(None),
-            Trade.closed_at >= start_dt,
-            Trade.closed_at <= end_dt,
-        )
-        .order_by(Trade.closed_at.asc())
-        .all()
-    )
-    
-    # Serialize trades for weekly email format
-    return [
-        TradeOut(
-            trade_id=t.external_id,
-            instrument=t.instrument,
-            side=t.side,
-            units=t.units,
-            opened_at=t.opened_at,
-            closed_at=t.closed_at,
-            entry_price=float(t.entry_price) if t.entry_price is not None else None,
-            exit_price=float(t.exit_price) if t.exit_price is not None else None,
-            pnl_net=float(t.pnl_net) if t.pnl_net is not None else None,
-            status=t.status or ("CLOSED" if t.closed_at is not None else "OPEN"),
-        )
-        for t in trades
-    ]
 
